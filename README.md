@@ -21,6 +21,8 @@ $ ./docker_install_ubuntu.sh
 
 # Quickstart:
 
+For the EnergyPlus simulation, see [SIMULATION.md](SIMULATION.md). Database connection instructions, sample queries, and CSV export are in [Access the PostgreSQL database](SIMULATION.md#access-the-postgresql-database).
+
 To create the container and start using the platform on the container, run the following commands from the command line. Ensure that you are in the root level of the directory.
 
 ```

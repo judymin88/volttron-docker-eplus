@@ -3,8 +3,6 @@ ARG image_tag=noble
 
 FROM ${image_repo}:${image_tag} AS volttron_base
 
-ARG volttron_repo=https://github.com/VOLTTRON/volttron.git
-ARG volttron_git_branch=main
 #
 SHELL [ "bash", "-c" ]
 #
@@ -65,59 +63,34 @@ RUN python3 -m pip config set global.break-system-packages true
 # Upgrade pip so that we get a pre-compiled wheel for 'cryptopgraphy', which is a dependency of Volttron
 # See https://cryptography.io/en/latest/faq/#installing-cryptography-fails-with-error-can-not-find-rust-compiler
 RUN python3 -m pip install --upgrade --ignore-installed pip
+RUN python3 -m pip install bacpypes3
+
+RUN set -eux && apt-get update --fix-missing  && apt-get install -y --no-install-recommends locales \
+    default-jdk \
+    iputils-ping \
+    libgeos-dev \
+    libeccodes-tools \
+    openssl \
+    libssl-dev \
+    python3-tk
+
+RUN apt-get install python3-scipy python3-sklearn python3-sklearn-lib python-sklearn-doc -y
 
 #
 # Install rust and cargo
 #
 RUN rustup default stable
 
-# Install the EnergyPlus version required by the simulation.
-# EnergyPlus 8.5.0 is available as a Linux x86_64 package only.
-ARG ENERGYPLUS_VERSION=8.5.0
-ARG ENERGYPLUS_BUILD=c87e61b44b
-ARG ENERGYPLUS_INSTALLER=EnergyPlus-${ENERGYPLUS_VERSION}-${ENERGYPLUS_BUILD}-Linux-x86_64.sh
-ARG ENERGYPLUS_URL=https://github.com/NatLabRockies/EnergyPlus/releases/download/v${ENERGYPLUS_VERSION}/${ENERGYPLUS_INSTALLER}
+# Download and install energyplus 8.5.0
+# DO NOT update to latest version; IDF files for energyplus are not backward compatible
+RUN wget https://github.com/NREL/EnergyPlus/releases/download/v8.5.0/EnergyPlus-8.5.0-c87e61b44b-Linux-x86_64.sh
 
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl; \
-    curl --fail --show-error --location --retry 3 --output /tmp/${ENERGYPLUS_INSTALLER} "${ENERGYPLUS_URL}"; \
-    chmod +x /tmp/${ENERGYPLUS_INSTALLER}; \
-    printf 'y\n\n\n\n\n' | /tmp/${ENERGYPLUS_INSTALLER}; \
-    energyplus_bin="$(find /usr/local/EnergyPlus-${ENERGYPLUS_VERSION//./-} -maxdepth 1 -type f -name 'energyplus-*' -perm -111 -print -quit)"; \
-    runenergyplus_bin="$(find /usr/local/EnergyPlus-${ENERGYPLUS_VERSION//./-} -maxdepth 1 -type f -name runenergyplus -print -quit)"; \
-    test -n "${energyplus_bin}"; \
-    test -n "${runenergyplus_bin}"; \
-    ln -sfn "${energyplus_bin}" /usr/local/bin/energyplus; \
-    ln -sfn "${runenergyplus_bin}" /usr/local/bin/runenergyplus; \
-    /usr/local/bin/energyplus --version; \
-    rm -f /tmp/${ENERGYPLUS_INSTALLER}; \
-    rm -rf /var/lib/apt/lists/*
+# This command will automate the interactive installation script by automatically answering the three questions being presented:
+# The printf command mimics the manual action of entering "yes" followed by two "enter" commands to accept the default configuration
+RUN printf 'y\n\n\n\n\n' | bash EnergyPlus-8.5.0-c87e61b44b-Linux-x86_64.sh
 
-# BCVTB 1.6.0 is the release whose examples were updated and tested with EnergyPlus 8.5.
-ARG BCVTB_VERSION=1.6.0
-ARG BCVTB_INSTALLER=bcvtb-install-linux64-v${BCVTB_VERSION}.jar
-ARG BCVTB_URL=https://github.com/lbl-srg/bcvtb/releases/download/v${BCVTB_VERSION}/${BCVTB_INSTALLER}
-# This IzPack installer takes an AutomatedInstallation XML file as its argument;
-# it does not support the install4j-style -q and -dir options.
-COPY configs/bcvtb-auto-install.xml /tmp/bcvtb-auto-install.xml
-RUN set -eux; \
-    mkdir -p /etc/apt/keyrings; \
-    curl --fail --show-error --location --retry 3 https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor --yes --output /etc/apt/keyrings/adoptium.gpg; \
-    . /etc/os-release; \
-    printf 'deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb %s main\n' "${VERSION_CODENAME}" > /etc/apt/sources.list.d/adoptium.list; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends temurin-8-jre; \
-    java -version; \
-    curl --fail --show-error --location --retry 3 --output /tmp/${BCVTB_INSTALLER} "${BCVTB_URL}"; \
-    java -jar /tmp/${BCVTB_INSTALLER} /tmp/bcvtb-auto-install.xml; \
-    test -f /opt/bcvtb/bin/BCVTB.jar; \
-    test -f /opt/bcvtb/lib/xml/variables.dtd; \
-    rm -f /tmp/${BCVTB_INSTALLER}; \
-    rm -f /tmp/bcvtb-auto-install.xml; \
-    rm -rf /var/lib/apt/lists/*
 
-#
+
 # Create a user called 'volttron'
 RUN userdel -r ubuntu 2>/dev/null || true; \
     id -u $VOLTTRON_USER &>/dev/null || adduser --uid $LOCAL_USER_ID --disabled-password --gecos "" $VOLTTRON_USER
@@ -139,6 +112,10 @@ RUN mkdir /startup $VOLTTRON_HOME && \
     chown $VOLTTRON_USER.$VOLTTRON_USER $VOLTTRON_HOME
 COPY --chown=volttron:volttron ./core /startup
 RUN chmod +x /startup/*
+
+COPY --chown=volttron:volttron agents/EnergyplusAgent /code/EnergyPlusAgent
+RUN cp /code/EnergyPlusAgent/eplus_config/socket.cfg /code/EnergyPlusAgent/eplus_config/building1/socket.cfg && \
+    cp /code/EnergyPlusAgent/eplus_config/variables.cfg /code/EnergyPlusAgent/eplus_config/building1/variables.cfg
 
 #
 # copy over volttron repo

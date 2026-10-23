@@ -41,6 +41,101 @@ docker exec -itu volttron volttron1 /home/volttron/.local/bin/volttron-ctl insta
   --tag energyplus --vip-identity energyplus --start
 ```
 
+## Access the PostgreSQL database
+
+Run these commands from the repository root on the machine running Docker. The simulation uses the `postgres` service in [docker-compose-sim.yml](docker-compose-sim.yml), with these connection settings:
+
+| Setting | Value |
+| --- | --- |
+| Database | `volttron` |
+| User | `volttron` |
+| Password | See `POSTGRES_PASSWORD` in `docker-compose-sim.yml` |
+| Host within the Compose network | `postgres` |
+| Port within the Compose network | `5432` |
+| Container | `volttron-postgres` |
+| Persistent volume | `volttron-postgres-data` |
+
+The SQL Historian uses the matching settings in [configs/historian.config](configs/historian.config). The Compose file does not publish the database port to the host, so `localhost:5432` will not reach this database by default.
+
+### Open a SQL prompt
+
+If the simulation stack is already running, open `psql` directly:
+
+```sh
+docker compose -f docker-compose-sim.yml exec postgres psql -U volttron -d volttron
+```
+
+This uses the database container's local socket and does not normally prompt for a password. No PostgreSQL client installation is needed on the host. If the service is stopped, start it and check readiness first:
+
+```sh
+docker compose -f docker-compose-sim.yml up -d postgres
+docker compose -f docker-compose-sim.yml exec postgres pg_isready -U volttron -d volttron
+```
+
+Inside `psql`, use these commands to inspect the database:
+
+```sql
+\conninfo
+\dt
+\d topics
+\d data
+SELECT topic_id, topic_name FROM topics ORDER BY topic_name LIMIT 20;
+SELECT t.topic_name, d.ts, to_jsonb(d) AS stored_row
+FROM data d JOIN topics t USING (topic_id)
+WHERE t.topic_name LIKE 'devices/PNNL/BUILDING1/%'
+ORDER BY d.ts DESC
+LIMIT 20;
+\q
+```
+
+`topics` maps topic IDs to names, and `data` stores timestamped readings associated with those IDs. The historian creates its tables when it initializes; starting PostgreSQL alone does not create historian tables. See the verification commands below for checking incoming simulation data.
+
+### Export recent readings to CSV
+
+This writes up to 1,000 recent EnergyPlus readings to `energyplus-readings.csv` in the current directory on the host:
+
+```sh
+docker compose -f docker-compose-sim.yml exec -T postgres \
+  psql -U volttron -d volttron -v ON_ERROR_STOP=1 -c \
+  "COPY (SELECT t.topic_name, d.ts, to_jsonb(d) AS stored_row FROM data d JOIN topics t USING (topic_id) WHERE t.topic_name LIKE 'devices/PNNL/BUILDING1/%' ORDER BY d.ts DESC LIMIT 1000) TO STDOUT WITH CSV HEADER" \
+  > energyplus-readings.csv
+```
+
+### Connect with a desktop client or host-installed psql
+
+For DBeaver, pgAdmin, or a PostgreSQL client on the Docker host, create an optional file named `docker-compose-postgres-local.yml` containing:
+
+```yaml
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5433:5432"
+```
+
+Apply it alongside the simulation Compose file:
+
+```sh
+docker compose -f docker-compose-sim.yml -f docker-compose-postgres-local.yml up -d postgres
+```
+
+Connect to host `127.0.0.1`, port `5433`, database `volttron`, and user `volttron`, using the password configured in the simulation Compose file. With a host-installed client:
+
+```sh
+psql -h 127.0.0.1 -p 5433 -U volttron -d volttron -W
+```
+
+The mapping binds to the Docker host's loopback interface. If Docker runs on a remote machine, run `ssh -N -L 5433:127.0.0.1:5433 USER@DOCKER_HOST` on your workstation, replacing `USER` and `DOCKER_HOST`, then connect your desktop client to `127.0.0.1:5433` on the workstation. Continue including both Compose files in commands that recreate the database service if you want to keep this port mapping.
+
+### Troubleshooting
+
+- **Service is not running:** check `docker compose -f docker-compose-sim.yml ps -a postgres` and `docker compose -f docker-compose-sim.yml logs --tail=100 postgres`.
+- **Connection refused from a desktop client:** confirm the optional port mapping is applied; use `127.0.0.1:5433` from the host and `postgres:5432` from containers on the Compose network.
+- **Password authentication failed:** use the credentials with which the database volume was first initialized. Changing `POSTGRES_PASSWORD` in Compose does not reset an existing database user's password.
+- **Table `data` or `topics` does not exist:** confirm the SQL Historian agent is installed and running, and inspect `docker compose -f docker-compose-sim.yml logs --tail=100 volttron1` for historian connection errors.
+- **No EnergyPlus rows:** confirm the simulation is publishing and use the EnergyPlus topic filter below; older deployments may have unrelated rows.
+
+Database contents persist in `volttron-postgres-data` across container restarts. Do not use `down -v` to troubleshoot access: it deletes the stack's persisted volumes.
+
 ## Verify simulation and historian data
 
 The configured run covers August 1–31 at a 90× time scale, so the full simulation is expected to take about eight hours. Successful completion should leave `simulation-data/building1/eplusout.csv`.

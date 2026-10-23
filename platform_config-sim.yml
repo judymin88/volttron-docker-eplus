@@ -12,20 +12,14 @@ agents:
     config: $CONFIG/listener.config
     tag: listener
 
-  platform.driver:
-    source: $VOLTTRON_ROOT/services/core/PlatformDriverAgent
-    config_store:
-      fake.csv:
-        file: $VOLTTRON_ROOT/examples/configurations/drivers/fake.csv
-        type: --csv
-      devices/fake-campus/fake-building/fake-device:
-        file: $VOLTTRON_ROOT/examples/configurations/drivers/fake.config
-      light.example.json:
-        file: $CONFIG/light.example.json
-        type: --json
-      devices/fake-campus/fake-building/fake-light:
-        file: $CONFIG/homeassistant-light.config
-    tag: driver
+  # platform.driver:
+  #   source: $VOLTTRON_ROOT/services/core/PlatformDriverAgent
+  #   config_store:
+  #     fake.csv:
+  #       file: $VOLTTRON_ROOT/examples/configurations/drivers/fake.csv
+  #       type: --csv
+  #     devices/fake-campus/fake-building/fake-device:
+  #       file: $VOLTTRON_ROOT/examples/configurations/drivers/fake.config
 
   # The Volttron Central Platform depends on Platform Driver being installed first.
   platform.agent:
@@ -33,9 +27,14 @@ agents:
     config: $CONFIG/vcp.config
     tag: vcp
 
+  # platform.actuator:
+  #   source: $VOLTTRON_ROOT/services/core/ActuatorAgent
+  #   tag: actuator
+
   platform.actuator:
-    source: $VOLTTRON_ROOT/services/core/ActuatorAgent
-    tag: actuator
+    source: /code/EnergyPlusAgent
+    config: $CONFIG/ep_smalloffice.config
+    tag: energyplus
 
   platform.historian:
     source: $VOLTTRON_ROOT/services/core/SQLHistorian
@@ -47,7 +46,3 @@ agents:
     config: $CONFIG/vc.config
     tag: vc
 
-  energyplus:
-    source: /home/volttron/energyplus-agent
-    config: $CONFIG/energyplus.config
-    tag: energyplus
