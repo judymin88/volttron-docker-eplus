@@ -13,8 +13,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks:
-      - automation
 
   volttron1:
     container_name: volttron1
@@ -26,10 +24,9 @@ services:
     image: eclipsevolttron/volttron:energyplus-sim
     ports:
       - "8443:8443"
-      - "22916:22916"
+      - "22917:22916"
     volumes:
       - ./platform_config-sim.yml:/platform_config.yml:ro
-      - ./agents/EnergyplusAgent:/home/volttron/energyplus-agent
       - ./configs:/home/volttron/configs
       - ./simulation-data:/simulation-data
       - volttron1-sim-volume:/home/volttron/db
@@ -41,8 +38,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - automation
 
 volumes:
   volttron1-sim-volume:
@@ -50,6 +45,3 @@ volumes:
   postgres-data:
     name: volttron-postgres-data
 
-networks:
-  automation:
-    name: volttron-automation
