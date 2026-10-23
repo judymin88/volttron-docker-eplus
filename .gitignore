@@ -115,3 +115,8 @@ simulation-data/
 
 # BCVTB runtime resource needed by EnergyPlus ExternalInterface
 !agents/EnergyplusAgent/bcvtb/lib/
+!agents/EnergyplusAgent/bcvtb/lib/xml/build/
+agents/EnergyplusAgent/bcvtb/lib/xml/build/*
+!agents/EnergyplusAgent/bcvtb/lib/xml/build/jar/
+agents/EnergyplusAgent/bcvtb/lib/xml/build/jar/*
+!agents/EnergyplusAgent/bcvtb/lib/xml/build/jar/DTDValidator.jar
