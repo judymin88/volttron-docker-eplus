@@ -24,7 +24,7 @@ services:
     image: eclipsevolttron/volttron:energyplus-sim
     ports:
       - "8443:8443"
-      - "22917:22916"
+      - "22916:22916"
     volumes:
       - ./platform_config-sim.yml:/platform_config.yml:ro
       - ./configs:/home/volttron/configs
